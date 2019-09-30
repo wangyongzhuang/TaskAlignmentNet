@@ -17,7 +17,7 @@ python prepare_coco.py
 python ./mmdetection/tools/dist_train.py ./mmdetection/configs/mask_rcnn_align_r50_fpn_1x.py 8
 
 # multi-test
-python ./mmdetection/tools/test.py configs/mask_rcnn_align_fpn_1x.py /cache/mask_rcnn_align_r50_fpn_1x/latest.pth 8 --out results.pkl --eval bbox segm
+python ./mmdetection/tools/test.py configs/mask_rcnn_align_r50_fpn_1x.py /cache/mask_rcnn_align_r50_fpn_1x/latest.pth 8 --out results.pkl --eval bbox segm
 
 
 # single-train

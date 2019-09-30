@@ -268,7 +268,7 @@ class AlignBBoxHead(BBoxHead):
                                    gt_masks, rcnn_train_cfg)
         return mask_targets
 
-    def forward(self, x):# x_cls, x_reg): # from double head
+    def forward(self, x, last_feat=None):# x_cls, x_reg): # from double head
         x_clss = x
         x_bbox = x
         x_mask = x
