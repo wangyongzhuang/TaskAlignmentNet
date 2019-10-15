@@ -1,7 +1,7 @@
 # model settings
 model = dict(
     type='MaskRCNNAlign',
-    pretrained='/cache/resnet50-19c8e357.pth',#'torchvision://resnet50',
+    pretrained='/cache/model_zoo/resnet50-19c8e357.pth',#'torchvision://resnet50',
     backbone=dict(
         type='ResNet',
         depth=50,

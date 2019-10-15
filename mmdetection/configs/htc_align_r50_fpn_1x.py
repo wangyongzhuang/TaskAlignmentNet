@@ -2,7 +2,7 @@
 model = dict(
     type='HybridTaskCascadeAlign',
     num_stages=3,
-    pretrained='/cache/resnet50-19c8e357.pth',#'torchvision://resnet50',
+    pretrained='/cache/model_zoo/resnet50-19c8e357.pth',#'torchvision://resnet50',
     interleaved=True,
     mask_info_flow=True,
     backbone=dict(
