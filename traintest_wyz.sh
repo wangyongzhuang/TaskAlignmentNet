@@ -14,10 +14,15 @@ python prepare_coco.py
 # 3.0 train and test
 
 # multi-train
-python ./mmdetection/tools/dist_train.py ./mmdetection/configs/mask_rcnn_align_r50_fpn_1x.py 8
+#python ./mmdetection/tools/dist_train.py ./mmdetection/configs/mask_rcnn_align_r50_fpn_1x.py 8
+
+python -m torch.distributed.launch --nproc_per_node=8 ./mmdetection/tools/train.py ./mmdetection/configs/mask_rcnn_align_r50_fpn_1x.py --launcher pytorch
 
 # multi-test
-python ./mmdetection/tools/test.py configs/mask_rcnn_align_r50_fpn_1x.py /cache/mask_rcnn_align_r50_fpn_1x/latest.pth 8 --out results.pkl --eval bbox segm
+cd 
+python -m torch.distributed.launch --nproc_per_node=8 ./mmdetection/tools/test.py configs/mask_rcnn_align_r50_fpn_1x.py  /cache/mask_rcnn_align_r50_fpn_1x/latest.pth --launcher pytorch --out results.pkl --eval bbox segm
+
+#python ./mmdetection/tools/test.py configs/mask_rcnn_align_r50_fpn_1x.py /cache/mask_rcnn_align_r50_fpn_1x/latest.pth 8 --out results.pkl --eval bbox segm
 
 
 # single-train
