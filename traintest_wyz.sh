@@ -14,8 +14,6 @@ python prepare_coco.py
 # 3.0 train and test
 
 # multi-train
-#python ./mmdetection/tools/dist_train.py ./mmdetection/configs/mask_rcnn_align_r50_fpn_1x.py 8
-
 python -m torch.distributed.launch --nproc_per_node=8 ./mmdetection/tools/train.py ./mmdetection/configs/mask_rcnn_align_r50_fpn_1x.py --launcher pytorch
 
 # multi-test

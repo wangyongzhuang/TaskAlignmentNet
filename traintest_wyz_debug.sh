@@ -14,9 +14,9 @@
 # 3.0 train and test
 
 # single-train
-python ./mmdetection/tools/train.py ./mmdetection/configs/htc_align_r50_fpn_1x_debug.py
+python ./mmdetection/tools/train.py ./mmdetection/configs/mask_rcnn_align_r50_fpn_1x_debug.py
 
 # single-test
-python ./mmdetection/tools/test.py /home/wyz/mmdet/mmdetection/configs/htc_align_r50_fpn_1x_debug.py /home/wyz/mmdet/work_dirs/htc_align_r50_fpn_1x_debug/latest.pth --out results.pkl --eval bbox segm
+python ./mmdetection/tools/test.py /home/wyz/mmdet/mmdetection/configs/mask_rcnn_align_r50_fpn_1x_debug.py /home/wyz/mmdet/work_dirs/mask_rcnn_align_r50_fpn_1x_debug/latest.pth --out results.pkl --eval bbox segm
 
 

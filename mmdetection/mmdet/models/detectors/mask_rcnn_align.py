@@ -99,6 +99,8 @@ class MaskRCNNAlign(TwoStageDetector):
                 sampling_results.append(sampling_result)
 
         # bbox head forward and loss
+        # by wyz
+        pred_with_pos_inds = True
         if self.with_bbox:
             rois = bbox2roi([res.bboxes for res in sampling_results])
             # TODO: a more flexible way to decide which feature maps to use
@@ -108,13 +110,18 @@ class MaskRCNNAlign(TwoStageDetector):
                 bbox_feats = self.shared_head(bbox_feats)
 
 
-            cls_score, bbox_pred, mask_pred = self.bbox_head(bbox_feats)
-
             bbox_targets = self.bbox_head.get_target(sampling_results,
                                                      gt_bboxes, gt_labels,
                                                      self.train_cfg.rcnn)
+            if pred_with_pos_inds:
+                labels = bbox_targets[0]
+                pos_inds = labels>0
+                cls_score, bbox_pred, mask_pred = self.bbox_head(bbox_feats, pos_inds=pos_inds)
+            else:
+                cls_score, bbox_pred, mask_pred = self.bbox_head(bbox_feats)
+
             loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
-                                            *bbox_targets)
+                                            *bbox_targets, pred_with_pos_inds=pred_with_pos_inds)
             losses.update(loss_bbox)
 
         # mask head forward and loss
@@ -127,7 +134,7 @@ class MaskRCNNAlign(TwoStageDetector):
                     x[:self.bbox_roi_extractor.num_inputs], pos_rois)
                 if self.with_shared_head:
                     mask_feats = self.shared_head(mask_feats)
-            else:
+            elif not pred_with_pos_inds:
                 pos_inds = []
                 device = bbox_feats.device
                 for res in sampling_results:
@@ -150,7 +157,9 @@ class MaskRCNNAlign(TwoStageDetector):
                                                      self.train_cfg.rcnn)
             pos_labels = torch.cat(
                 [res.pos_gt_labels for res in sampling_results])
-            mask_pred = mask_pred[pos_inds]
+            if not pred_with_pos_inds:
+                mask_pred = mask_pred[pos_inds]
+                
             loss_mask = self.bbox_head.loss_for_mask(mask_pred, mask_targets, pos_labels)
 
             losses.update(loss_mask)

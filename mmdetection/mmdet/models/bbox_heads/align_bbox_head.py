@@ -268,10 +268,13 @@ class AlignBBoxHead(BBoxHead):
                                    gt_masks, rcnn_train_cfg)
         return mask_targets
 
-    def forward(self, x, last_feat=None):# x_cls, x_reg): # from double head
+    def forward(self, x, last_feat=None, pos_inds=None):# x_cls, x_reg): # from double head
         x_clss = x
         x_bbox = x
         x_mask = x
+        if pos_inds is not None:
+            x_bbox = x_bbox[pos_inds]
+            x_mask = x_mask[pos_inds]
 
         x_clss = F.interpolate(x_clss, size=(7,7), mode="bilinear", align_corners=None)
         x_clss = x_clss.view(x_clss.shape[0], -1)
