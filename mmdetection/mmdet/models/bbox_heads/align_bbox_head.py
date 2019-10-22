@@ -318,8 +318,22 @@ class AlignBBoxHead(BBoxHead):
         return cls_score, bbox_pred
         """
 
+    def transform_to_directional_mask(self, mask, bin_num=4):
+        resolution = mask.size()[-1]
+        mask_directional = []
+        bin_size = resolution / bin_num
+        for i in range(bin_num):
+            for j in range(bin_num):
+                idx_begin_i, idx_end_i = round(i*bin_size), round((i+1)*bin_size)
+                idx_begin_j, idx_end_j = round(j*bin_size), round((i+1)*bin_size)
+                mask_slice = mask[:,idx_begin_i:idx_end_i, idx_begin_j:idx_end_j]
+                mask_directional.append(mask_slice.max(-1)[0])
+                mask_directional.append(mask_slice.max(-2)[0])
+        mask_directional = torch.cat(mask_directional, dim=-1)
+        return mask_directional
+
     @force_fp32(apply_to=('mask_pred', ))
-    def loss_for_mask(self, mask_pred, mask_targets, labels):
+    def loss_for_mask(self, mask_pred, mask_targets, labels, with_align=False):
         loss = dict()
         if self.class_agnostic:
             loss_mask = self.loss_mask(mask_pred, mask_targets,
@@ -327,6 +341,16 @@ class AlignBBoxHead(BBoxHead):
         else:
             loss_mask = self.loss_mask(mask_pred, mask_targets, labels)
         loss['loss_mask'] = loss_mask
+        import pdb
+        pdb.set_trace(0)
+        if with_align:
+            num_rois = mask_pred.size()[0]
+            inds = torch.arange(0, num_rois, dtype=torch.long, device=mask_pred.device)
+            pred_slice = mask_pred[inds, labels].squeeze(1)
+            pred_slice_directional = self.transform_to_directional_mask(pred_slice, bin_num=4)
+            target_directional = self.transform_to_directional_mask(target, bin_num=4)
+            loss_align = F.binary_cross_entropy_with_logits(pred_slice_directional, target_directional, reduction='mean')[None]
+            loss['loss_align'] = loss_align
         return loss
 
     def get_seg_masks(self, mask_pred, det_bboxes, det_labels, rcnn_test_cfg,
