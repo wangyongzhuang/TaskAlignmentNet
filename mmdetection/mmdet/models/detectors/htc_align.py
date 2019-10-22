@@ -87,12 +87,18 @@ class HybridTaskCascadeAlign(CascadeRCNN):
                     bbox_semantic_feat, bbox_feats.shape[-2:])
             bbox_feats += bbox_semantic_feat
 
-        cls_score, bbox_pred, mask_pred = bbox_head(bbox_feats)
-        
+        pred_with_pos_inds = True
         bbox_targets = bbox_head.get_target(sampling_results, gt_bboxes,
                                             gt_labels, rcnn_train_cfg)
 
-        loss_bbox = bbox_head.loss(cls_score, bbox_pred, *bbox_targets)
+        if pred_with_pos_inds:
+            labels = bbox_targets[0]
+            pos_inds = labels>0
+            cls_score, bbox_pred, mask_pred = bbox_head(bbox_feats, pos_inds=pos_inds)
+        else:
+            cls_score, bbox_pred, mask_pred = bbox_head(bbox_feats)
+
+        loss_bbox = bbox_head.loss(cls_score, bbox_pred, *bbox_targets, pred_with_pos_inds=pred_with_pos_inds)
 
         # mask
         pos_inds = []
@@ -113,7 +119,8 @@ class HybridTaskCascadeAlign(CascadeRCNN):
                                                      gt_masks, 
                                                      rcnn_train_cfg)
         pos_labels = torch.cat([res.pos_gt_labels for res in sampling_results])
-        mask_pred = mask_pred[pos_inds]
+        if not pred_with_pos_inds:
+            mask_pred = mask_pred[pos_inds]
         loss_mask = bbox_head.loss_for_mask(mask_pred, mask_targets, pos_labels)
 
         loss_bbox.update(loss_mask)

@@ -1,0 +1,10 @@
+mmdetection/mmdet/models/__init__.py
+mmdetection/mmdet/models/bbox_head.py
+mmdetection/mmdet/models/align_bbox_head.py
+mmdetection/mmdet/models/detectors/__init__.py
+mmdetection/mmdet/models/detectors/base.py
+mmdetection/mmdet/models/detectors/htc_align.py
+mmdetection/mmdet/models/detectors/mask_rcnn_align.py
+mmdetection/mmdet/models/detectors/two_stage.py
+mmdetection/configs/htc_align_r50_fpn_1x.py
+mmdetection/configs/mask_rcnn_align_r50_fpn_1x.py

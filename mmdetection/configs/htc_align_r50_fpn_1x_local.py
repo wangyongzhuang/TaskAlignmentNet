@@ -2,7 +2,7 @@
 model = dict(
     type='HybridTaskCascadeAlign',
     num_stages=3,
-    pretrained='/cache/model_zoo/resnet50-19c8e357.pth',#'torchvision://resnet50',
+    pretrained='/home/wyz/mmdet/resnet50-19c8e357.pth',#'torchvision://resnet50',
     interleaved=True,
     mask_info_flow=True,
     backbone=dict(
@@ -210,7 +210,7 @@ test_cfg = dict(
     keep_all_stages=False)
 # dataset settings
 dataset_type = 'CocoDataset'
-data_root = '/cache/coco/'#'data/coco/'
+data_root = '/data/coco/'#'data/coco/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
@@ -243,26 +243,29 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=1,#2,
+    imgs_per_gpu=2,
     workers_per_gpu=2,
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/instances_train2017.json',
+        #ann_file=data_root + 'annotations/instances_train2017_sampled_0.01.json',
         img_prefix=data_root + 'train2017/',
         #seg_prefix=data_root + 'stuffthingmaps/train2017/',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/instances_val2017.json',
+        #ann_file=data_root + 'annotations/instances_val2017_sampled_0.01.json',
         img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/instances_val2017.json',
+        #ann_file=data_root + 'annotations/instances_val2017_sampled_0.01.json',
         img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline))
 # optimizer
-optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -284,7 +287,7 @@ log_config = dict(
 total_epochs = 12
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = '/cache/htc_align_r50_fpn_1x'
+work_dir = '/home/wyz/mmdet/work_dirs/htc_align_r50_fpn_1x_local'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

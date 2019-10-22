@@ -287,7 +287,7 @@ log_config = dict(
 total_epochs = 1#12
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = '/home/wyz/mmdet/work_dirs/htc_align_r50_fpn_1x'
+work_dir = '/home/wyz/mmdet/work_dirs/htc_align_r50_fpn_1x_debug'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

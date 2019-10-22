@@ -105,7 +105,7 @@ train_cfg = dict(
             ignore_iof_thr=-1),
         sampler=dict(
             type='RandomSampler',
-            num=64,#512,
+            num=512,
             pos_fraction=0.25,
             neg_pos_ub=-1,
             add_gt_as_proposals=True),
@@ -197,10 +197,10 @@ log_config = dict(
 # yapf:enable
 evaluation = dict(interval=1)
 # runtime settings
-total_epochs = 12#1#12
+total_epochs = 12
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = '/home/wyz/mmdet/work_dirs/mask_rcnn_r50_fpn_1x_local'
+work_dir = '/home/wyz/mmdet/work_dirs/mask_rcnn_align_r50_fpn_1x_local'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]
