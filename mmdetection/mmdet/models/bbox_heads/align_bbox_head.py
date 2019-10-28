@@ -9,7 +9,7 @@ from mmcv.cnn.weight_init import normal_init, xavier_init
 
 from ..backbones.resnet import Bottleneck
 from ..registry import HEADS
-from ..utils import ConvModule
+from ..utils import ConvModule, build_conv_layer, build_norm_layer
 from .bbox_head import BBoxHead
 
 # for mask
@@ -17,67 +17,294 @@ import mmcv
 import numpy as np
 import pycocotools.mask as mask_util
 
+class BasicResBlock(nn.Module):
+    """Basic residual block.
+
+    This block is a little different from the block in the ResNet backbone.
+    The kernel size of conv1 is 1 in this block while 3 in ResNet BasicBlock.
+
+    Args:
+        in_channels (int): Channels of the input feature map.
+        out_channels (int): Channels of the output feature map.
+        conv_cfg (dict): The config dict for convolution layers.
+        norm_cfg (dict): The config dict for normalization layers.
+    """
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 conv_cfg=None,
+                 norm_cfg=dict(type='BN')):
+        super(BasicResBlock, self).__init__()
+
+        # main path
+        self.conv1 = ConvModule(
+            in_channels,
+            in_channels,
+            kernel_size=3,
+            padding=1,
+            bias=False,
+            conv_cfg=conv_cfg,
+            norm_cfg=norm_cfg)
+        self.conv2 = ConvModule(
+            in_channels,
+            out_channels,
+            kernel_size=1,
+            bias=False,
+            activation=None,
+            conv_cfg=conv_cfg,
+            norm_cfg=norm_cfg)
+
+        # identity path
+        self.conv_identity = ConvModule(
+            in_channels,
+            out_channels,
+            kernel_size=1,
+            conv_cfg=conv_cfg,
+            norm_cfg=norm_cfg,
+            activation=None)
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        identity = x
+
+        x = self.conv1(x)
+        x = self.conv2(x)
+
+        identity = self.conv_identity(identity)
+        out = x + identity
+
+        out = self.relu(out)
+        return out
+
+
+
+class Bottleneck_example(nn.Module):
+    expansion = 4
+
+    def __init__(self,
+                 inplanes,
+                 planes,
+                 stride=1,
+                 dilation=1,
+                 downsample=None,
+                 style='pytorch',
+                 conv_cfg=None,
+                 norm_cfg=dict(type='BN'),
+                 ):
+
+        """
+
+                Bottleneck(
+                    inplanes=self.conv_out_channels,
+                    planes=self.conv_out_channels // 4,
+                    conv_cfg=self.conv_cfg,
+                    norm_cfg=self.norm_cfg))
+        """
+        """Bottleneck block for ResNet.
+        If style is "pytorch", the stride-two layer is the 3x3 conv layer,
+        if it is "caffe", the stride-two layer is the first 1x1 conv layer.
+        """
+        super(Bottleneck_example, self).__init__()
+        assert style in ['pytorch', 'caffe']
+
+        self.inplanes = inplanes
+        self.planes = planes
+        self.stride = stride
+        self.dilation = dilation
+        self.style = style
+        self.conv_cfg = conv_cfg
+        self.norm_cfg = norm_cfg
+
+        if self.style == 'pytorch':
+            self.conv1_stride = 1
+            self.conv2_stride = stride
+        else:
+            self.conv1_stride = stride
+            self.conv2_stride = 1
+
+        self.norm1_name, norm1 = build_norm_layer(norm_cfg, planes, postfix=1)
+        self.norm2_name, norm2 = build_norm_layer(norm_cfg, planes, postfix=2)
+        self.norm3_name, norm3 = build_norm_layer(
+            norm_cfg, planes * self.expansion, postfix=3)
+
+        self.conv1 = build_conv_layer(
+            conv_cfg,
+            inplanes,
+            planes,
+            kernel_size=1,
+            stride=self.conv1_stride,
+            bias=False)
+        self.add_module(self.norm1_name, norm1)
+        self.conv2 = build_conv_layer(
+                conv_cfg,
+                planes,
+                planes,
+                kernel_size=3,
+                stride=self.conv2_stride,
+                padding=dilation,
+                dilation=dilation,
+                bias=False)
+        self.add_module(self.norm2_name, norm2)
+        self.conv3 = build_conv_layer(
+            conv_cfg,
+            planes,
+            planes * self.expansion,
+            kernel_size=1,
+            bias=False)
+        self.add_module(self.norm3_name, norm3)
+
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+
+
+
+    @property
+    def norm1(self):
+        return getattr(self, self.norm1_name)
+
+    @property
+    def norm2(self):
+        return getattr(self, self.norm2_name)
+
+    @property
+    def norm3(self):
+        return getattr(self, self.norm3_name)
+
+    def forward(self, x):
+
+        def _inner_forward(x):
+            identity = x
+
+            out = self.conv1(x)
+            out = self.norm1(out)
+            out = self.relu(out)
+
+            out = self.conv2(out)
+            out = self.norm2(out)
+            out = self.relu(out)
+
+
+            out = self.conv3(out)
+            out = self.norm3(out)
+
+
+            out += identity
+
+            return out
+
+        out = _inner_forward(x)
+
+        out = self.relu(out)
+
+        return out
+
 
 class AlignConv(nn.Module):
-    def __init__(self, bbox_in_channel=256, mid_channel=256, bbox_out_channel=256, mask_in_channel=256, mask_out_channel=256, align_channel=1, with_gmp=True):
+    expansion = 4
+
+    def __init__(self, bbox_in_channel=1024, bbox_out_channel=1024, mask_in_channel=256, mask_out_channel=256, align_channel=1, with_gmp=True, conv_cfg=None, norm_cfg=dict(type='BN')):
         super(AlignConv, self).__init__()
         self.change_channel = bbox_in_channel != bbox_out_channel
         self.relu = nn.ReLU(inplace=True)
-        self.with_align = True
+        self.with_align = False #True
         self.align_channel = align_channel
+        mid_channel = bbox_in_channel if self.change_channel else bbox_in_channel // 4
+        print("align {}: det:[{}, {}, {}] seg:[{}, {}]".format(self.with_align, bbox_in_channel, mid_channel, bbox_out_channel, mask_in_channel, mask_out_channel))
+
+        self.conv_cfg = conv_cfg
+        self.norm_cfg = norm_cfg
 
         # bbox head
         if self.change_channel:
-            self.bbox_res_1 = nn.Sequential(
-                                nn.Conv2d(in_channels=bbox_in_channel, out_channels=bbox_out_channel, kernel_size=1, padding=0),
-                                nn.BatchNorm2d(bbox_out_channel)
+            self.bbox_res_0 = ConvModule(
+                                bbox_in_channel,
+                                bbox_out_channel,
+                                kernel_size=1,
+                                conv_cfg=self.conv_cfg,
+                                norm_cfg=self.norm_cfg,
+                                activation=None
                             )
         else:
-            self.bbox_res_1 = nn.Sequential(
-                                nn.Conv2d(in_channels=bbox_in_channel, out_channels=mid_channel, kernel_size=1, padding=0),
-                                nn.BatchNorm2d(mid_channel),
-                                nn.ReLU(inplace=True)
+            self.bbox_res_1 = ConvModule(
+                                bbox_in_channel,
+                                mid_channel,
+                                kernel_size=1,
+                                conv_cfg=self.conv_cfg,
+                                norm_cfg=self.norm_cfg,
+                                activation="relu"
                             )
-        self.bbox_res_2 = nn.Sequential(
-                                nn.Conv2d(in_channels=bbox_in_channel, out_channels=mid_channel, kernel_size=3, padding=1),
-                                nn.BatchNorm2d(mid_channel),
-                                nn.ReLU(inplace=True)
+        self.bbox_res_2 = ConvModule(
+                                mid_channel,
+                                mid_channel,
+                                kernel_size=3,
+                                padding=1,
+                                conv_cfg=self.conv_cfg,
+                                norm_cfg=self.norm_cfg,
+                                activation='relu',
                             )
-        self.bbox_res_3 = nn.Sequential(
-                                nn.Conv2d(in_channels=mid_channel + self.with_align * self.align_channel, out_channels=bbox_out_channel, kernel_size=3, padding=1),
-                                nn.BatchNorm2d(bbox_out_channel),
+        self.bbox_res_3 = ConvModule(
+                                mid_channel + self.with_align * self.align_channel,
+                                bbox_out_channel,
+                                kernel_size=1,
+                                conv_cfg=self.conv_cfg,
+                                norm_cfg=self.norm_cfg,
+                                activation=None,
                             )
 
+        self.bbox_res_block = Bottleneck_example(
+                    inplanes=bbox_in_channel,
+                    planes=bbox_in_channel // 4,
+                    conv_cfg=self.conv_cfg,
+                    norm_cfg=self.norm_cfg)
+
         # mask head
-        self.mask_res_2 = nn.Sequential(
-                                nn.Conv2d(in_channels=mask_in_channel, out_channels=mid_channel, kernel_size=3, padding=1),
-                                nn.BatchNorm2d(mid_channel),
-                                nn.ReLU(inplace=True)
+        self.mask_res_2 = ConvModule(
+                                mask_in_channel,
+                                out_channels=mask_out_channel if self.with_align else mid_channel,
+                                kernel_size=3,
+                                padding=1,
+                                conv_cfg=self.conv_cfg,
+                                norm_cfg=self.norm_cfg,
+                                activation="relu",
                             )
-        self.mask_res_3 = nn.Sequential(
-                                nn.Conv2d(in_channels=mid_channel + self.with_align * self.align_channel, out_channels=mask_out_channel, kernel_size=1, padding=0),
-                                nn.BatchNorm2d(mask_out_channel),
-                                nn.ReLU(inplace=True)
+        if self.with_align:
+            self.mask_res_3 = ConvModule(
+                                mid_channel + self.with_align * self.align_channel,
+                                mask_out_channel,
+                                kernel_size=1,
+                                conv_cfg=self.conv_cfg,
+                                norm_cfg=self.norm_cfg,
+                                activation="relu",
                             )
 
         # align block
         if self.with_align:
-            self.align_from_bbox = nn.Sequential(
-                                nn.Conv2d(in_channels=bbox_in_channel, out_channels=self.align_channel, kernel_size=1, padding=0),
-                                nn.BatchNorm2d(align_channel),
-                                nn.ReLU(inplace=True)
+            self.align_from_bbox = ConvModule(
+                                mid_channel,
+                                self.align_channel,
+                                kernel_size=1,
+                                conv_cfg=self.conv_cfg,
+                                norm_cfg=self.norm_cfg,
+                                activation="relu",
                             )
 
-            self.align_from_mask = nn.Sequential(
-                                nn.Conv2d(in_channels=mask_in_channel, out_channels=self.align_channel, kernel_size=1, padding=0),
-                                nn.BatchNorm2d(align_channel),
-                                nn.ReLU(inplace=True)
+            self.align_from_mask = ConvModule(
+                                mid_channel,
+                                self.align_channel,
+                                kernel_size=1,
+                                conv_cfg=self.conv_cfg,
+                                norm_cfg=self.norm_cfg,
+                                activation="relu",
                             )
     def forward(self, x_bbox, x_mask):
+        
         if self.change_channel:
-            identity = self.bbox_res_1(x_bbox)
+            identity = self.bbox_res_0(x_bbox)
         else:
             identity = x_bbox
+            x_bbox = self.bbox_res_1(x_bbox)
 
         # align
         if self.with_align:
@@ -92,33 +319,27 @@ class AlignConv(nn.Module):
             x_bbox = torch.cat([x_bbox, alignment_from_mask], dim=1)
             x_mask = torch.cat([x_mask, alignment_from_bbox], dim=1)
 
-        x_bbox = self.relu(identity + self.bbox_res_3(x_bbox))
-        x_mask = self.mask_res_3(x_mask)
+        x_bbox = self.bbox_res_3(x_bbox)
+        x_bbox = self.relu(identity + x_bbox)
+        if self.with_align:
+            x_mask = self.mask_res_3(x_mask)
+        """
+        x_bbox = self.bbox_res_block(x_bbox)
+        x_mask = self.mask_res_2(x_mask)
+        """
 
         return x_bbox, x_mask
 
 @HEADS.register_module
 class AlignBBoxHead(BBoxHead):
-    """Bbox head used in Double-Head R-CNN
-
-                                      /-> cls
-                  /-> shared convs ->
-                                      \-> reg
-    roi features
-                                      /-> cls
-                  \-> shared fc    ->
-                                      \-> reg
-    """  # noqa: W605
-
     def __init__(self,
-                 num_convs=0,
-                 num_fcs=0,
+                 num_convs=4,
+                 num_fcs=2,
                  conv_out_channels=1024,
                  fc_out_channels=1024,
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
                  # by wyz, for mask
-                 #num_convs=4,#mask
                  roi_feat_size=14,
                  in_channels=256,
                  conv_kernel_size=3,
@@ -127,14 +348,12 @@ class AlignBBoxHead(BBoxHead):
                  upsample_ratio=2,
                  num_classes=81,
                  class_agnostic=False,
-                 #conv_cfg=None,#mask
-                 #norm_cfg=None,#mask
                  loss_mask=dict(
                      type='CrossEntropyLoss', use_mask=True, loss_weight=1.0),
                  **kwargs):
-        kwargs.setdefault('with_avg_pool', True)
+        kwargs.setdefault('with_avg_pool', True)#True
         super(AlignBBoxHead, self).__init__(**kwargs)
-        assert self.with_avg_pool
+        #assert self.with_avg_pool
         assert num_convs > 0
         assert num_fcs > 0
         self.num_convs = num_convs
@@ -146,30 +365,36 @@ class AlignBBoxHead(BBoxHead):
         self.conv_cfg = conv_cfg
         self.norm_cfg = norm_cfg
 
-        # 1.0 by wyz
+        # 1.0 roi_feat
         # increase the channel of input features
-        #self.res_block = BasicResBlock(self.in_channels,self.conv_out_channels)
+        self.res_block = BasicResBlock(self.in_channels,self.conv_out_channels)
 
+        self.roi_feat_size = _pair(roi_feat_size)
         # add conv heads
-        self.conv_branch = self._add_conv_branch()
+        self.align_branch = self._add_align_branch()
+        #self.conv_branch = self._add_conv_branch()
         # add fc heads
         self.fc_branch = self._add_fc_branch()
 
-        out_dim_reg = 4 if self.reg_class_agnostic else 4 * self.num_classes
-        #self.fc_reg = nn.Linear(self.conv_out_channels, out_dim_reg)
 
-        self.fc_reg = nn.Linear(self.conv_out_channels * 2 * 14, out_dim_reg)
+        # 1.1 cls
         self.fc_cls = nn.Linear(self.fc_out_channels, self.num_classes)
+
+        # 1.2 reg
+        out_dim_reg = 4 if self.reg_class_agnostic else 4 * self.num_classes
         self.relu = nn.ReLU(inplace=True)
+        if self.with_avg_pool:
+            self.avg_pool = nn.AvgPool2d(self.roi_feat_size)
+            print("avg_pool in the branch:{}".format(self.with_avg_pool))
+            self.fc_reg = nn.Linear(self.conv_out_channels, out_dim_reg) # TODO # 14
+        else:
+            self.fc_reg = nn.Linear(self.conv_out_channels * 2 * 7, out_dim_reg) # TODO # 14
 
-
-
-        # 2.0 by wyz, for mask
+        # 1.3 mask
         if upsample_method not in [None, 'deconv', 'nearest', 'bilinear']:
             raise ValueError(
                 'Invalid upsample method {}, accepted methods '
                 'are "deconv", "nearest", "bilinear"'.format(upsample_method))
-        self.roi_feat_size = _pair(roi_feat_size)
         self.in_channels = in_channels
         self.conv_kernel_size = conv_kernel_size
         #self.conv_out_channels = conv_out_channels#mask
@@ -214,22 +439,45 @@ class AlignBBoxHead(BBoxHead):
             if self.upsample_method == 'deconv' else upsample_in_channels)
         self.conv_logits_mask = nn.Conv2d(logits_in_channel, out_channels, 1)
 
+    def _add_align_branch(self):
+        branch_convs = nn.ModuleList()
+        #last_channel = self.in_channels
+        last_channel = self.conv_out_channels
+        for i in range(self.num_convs):
+            branch_convs.append(
+                AlignConv(bbox_in_channel=last_channel, bbox_out_channel=self.conv_out_channels, mask_in_channel=256, mask_out_channel=256, align_channel=1, with_gmp=True, conv_cfg=self.conv_cfg, norm_cfg=self.norm_cfg)
+            )
+            last_channel = self.conv_out_channels
+        return branch_convs
+
     def _add_conv_branch(self):
         """Add the fc branch which consists of a sequential of conv layers"""
         branch_convs = nn.ModuleList()
-        last_channel = self.in_channels
         for i in range(self.num_convs):
             branch_convs.append(
-                AlignConv(bbox_in_channel=last_channel, mid_channel=256, bbox_out_channel=self.conv_out_channels, mask_in_channel=256, mask_out_channel=256, align_channel=1, with_gmp=True)
-            )
-            """
-                Bottleneck(
+                #Bottleneck(
+                Bottleneck_example(
                     inplanes=self.conv_out_channels,
                     planes=self.conv_out_channels // 4,
                     conv_cfg=self.conv_cfg,
                     norm_cfg=self.norm_cfg))
-            """
-            last_channel = self.conv_out_channels
+
+        """
+        # from fcn_mask_head
+        self.convs = nn.ModuleList()
+        for i in range(self.num_convs):
+            in_channels = (
+                self.in_channels if i == 0 else self.conv_out_channels)
+            padding = (self.conv_kernel_size - 1) // 2
+            self.convs.append(
+                ConvModule(
+                    in_channels,
+                    self.conv_out_channels,
+                    self.conv_kernel_size,
+                    padding=padding,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg))
+        """
         return branch_convs
 
     def _add_fc_branch(self):
@@ -237,8 +485,9 @@ class AlignBBoxHead(BBoxHead):
         branch_fcs = nn.ModuleList()
         for i in range(self.num_fcs):
             fc_in_channels = (
-                self.in_channels *
-                self.roi_feat_area if i == 0 else self.fc_out_channels)
+                    self.in_channels *
+                    49 if i == 0 else self.fc_out_channels) # TODO
+                    #self.roi_feat_area if i == 0 else self.fc_out_channels)
             branch_fcs.append(nn.Linear(fc_in_channels, self.fc_out_channels))
         return branch_fcs
 
@@ -268,28 +517,49 @@ class AlignBBoxHead(BBoxHead):
                                    gt_masks, rcnn_train_cfg)
         return mask_targets
 
-    def forward(self, x, last_feat=None, pos_inds=None):# x_cls, x_reg): # from double head
-        x_clss = x
+    def forward(self, x, bbox_feats_7=None, last_feat=None, pos_inds=None):# x_cls, x_reg): # from double head
+        if bbox_feats_7 is None:
+            x_clss = x
+        else:
+            x_clss = bbox_feats_7
         x_bbox = x
         x_mask = x
         if pos_inds is not None:
             x_bbox = x_bbox[pos_inds]
             x_mask = x_mask[pos_inds]
 
-        x_clss = F.interpolate(x_clss, size=(7,7), mode="bilinear", align_corners=None)
+        if bbox_feats_7 is None:
+            x_clss = F.interpolate(x_clss, size=(7,7), mode="bilinear", align_corners=False)
         x_clss = x_clss.view(x_clss.shape[0], -1)
         for fc in self.fc_branch:
             x_clss = self.relu(fc(x_clss))
-        for conv in self.conv_branch:
+
+        #x_bbox_conv = F.interpolate(x_bbox, size=(7,7), mode="bilinear", align_corners=False)
+        #x_bbox_conv = self.res_block(x_bbox_conv)
+        #for conv in self.conv_branch:
+        #    x_bbox_conv = conv(x_bbox_conv)
+        #x_bbox = F.interpolate(x_bbox, size=(7,7), mode="bilinear", align_corners=False)
+        
+        x_bbox = self.res_block(x_bbox)
+        for conv in self.align_branch:
             x_bbox, x_mask = conv(x_bbox, x_mask)
+        #x_bbox = x_bbox_conv
 
         # clss
         cls_score = self.fc_cls(x_clss)
         # bbox
-        x_bbox = torch.cat([x_bbox.max(-1)[0], x_bbox.max(-2)[0]], dim=-1).view(x_bbox.shape[0], -1)
+        #x_bbox = torch.cat([x_bbox.max(-1)[0], x_bbox.max(-2)[0]], dim=-1).view(x_bbox.shape[0], -1)
+        #x_bbox = (x_bbox.max(-1, keepdim=True)[0] + x_bbox.max(-2, keepdim=True)[0]) / 2
+
+        if self.with_avg_pool:
+            x_bbox = self.avg_pool(x_bbox)
+            x_bbox = x_bbox.view(x_bbox.size(0), -1)
         bbox_pred = self.fc_reg(x_bbox)
         # mask
-        x_mask = self.upsample(x_mask)
+        if self.upsample is not None:
+            x_mask = self.upsample(x_mask)
+            if self.upsample_method == 'deconv':
+                x_mask = self.relu(x_mask)
         mask_pred = self.conv_logits_mask(x_mask)
 
         return cls_score, bbox_pred, mask_pred
@@ -325,7 +595,7 @@ class AlignBBoxHead(BBoxHead):
         for i in range(bin_num):
             for j in range(bin_num):
                 idx_begin_i, idx_end_i = round(i*bin_size), round((i+1)*bin_size)
-                idx_begin_j, idx_end_j = round(j*bin_size), round((i+1)*bin_size)
+                idx_begin_j, idx_end_j = round(j*bin_size), round((j+1)*bin_size)
                 mask_slice = mask[:,idx_begin_i:idx_end_i, idx_begin_j:idx_end_j]
                 mask_directional.append(mask_slice.max(-1)[0])
                 mask_directional.append(mask_slice.max(-2)[0])
@@ -341,14 +611,14 @@ class AlignBBoxHead(BBoxHead):
         else:
             loss_mask = self.loss_mask(mask_pred, mask_targets, labels)
         loss['loss_mask'] = loss_mask
-        import pdb
-        pdb.set_trace(0)
+
+        with_align = False#True
         if with_align:
             num_rois = mask_pred.size()[0]
             inds = torch.arange(0, num_rois, dtype=torch.long, device=mask_pred.device)
             pred_slice = mask_pred[inds, labels].squeeze(1)
             pred_slice_directional = self.transform_to_directional_mask(pred_slice, bin_num=4)
-            target_directional = self.transform_to_directional_mask(target, bin_num=4)
+            target_directional = self.transform_to_directional_mask(mask_targets, bin_num=4)
             loss_align = F.binary_cross_entropy_with_logits(pred_slice_directional, target_directional, reduction='mean')[None]
             loss['loss_align'] = loss_align
         return loss

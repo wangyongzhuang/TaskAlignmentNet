@@ -127,14 +127,7 @@ class MaskRCNNAlign(TwoStageDetector):
         # mask head forward and loss
         if self.with_mask:
             self.share_roi_extractor = True
-            if not self.share_roi_extractor:
-                pos_rois = bbox2roi(
-                    [res.pos_bboxes for res in sampling_results])
-                mask_feats = self.bbox_roi_extractor(
-                    x[:self.bbox_roi_extractor.num_inputs], pos_rois)
-                if self.with_shared_head:
-                    mask_feats = self.shared_head(mask_feats)
-            elif not pred_with_pos_inds:
+            if not pred_with_pos_inds:
                 pos_inds = []
                 device = bbox_feats.device
                 for res in sampling_results:
@@ -149,16 +142,13 @@ class MaskRCNNAlign(TwoStageDetector):
                             device=device,
                             dtype=torch.uint8))
                 pos_inds = torch.cat(pos_inds)
-                #mask_feats = bbox_feats[pos_inds]
-            #mask_pred = self.bbox_head(mask_feats)
+                mask_pred = mask_pred[pos_inds]
 
             mask_targets = self.bbox_head.get_target_mask(sampling_results,
                                                      gt_masks,
                                                      self.train_cfg.rcnn)
             pos_labels = torch.cat(
                 [res.pos_gt_labels for res in sampling_results])
-            if not pred_with_pos_inds:
-                mask_pred = mask_pred[pos_inds]
                 
             loss_mask = self.bbox_head.loss_for_mask(mask_pred, mask_targets, pos_labels)
 
@@ -193,26 +183,6 @@ class MaskRCNNAlign(TwoStageDetector):
             cfg=rcnn_test_cfg)
         return det_bboxes, det_labels
 
-    def simple_test(self, img, img_meta, proposals=None, rescale=False):
-        """Test without augmentation."""
-        assert self.with_bbox, "Bbox head must be implemented."
-
-        x = self.extract_feat(img)
-
-        proposal_list = self.simple_test_rpn(
-            x, img_meta, self.test_cfg.rpn) if proposals is None else proposals
-
-        det_bboxes, det_labels = self.simple_test_bboxes(
-            x, img_meta, proposal_list, self.test_cfg.rcnn, rescale=rescale)
-        bbox_results = bbox2result(det_bboxes, det_labels,
-                                   self.bbox_head.num_classes)
-
-        if not self.with_mask:
-            return bbox_results
-        else:
-            segm_results = self.simple_test_mask(
-                x, img_meta, det_bboxes, det_labels, rescale=rescale)
-            return bbox_results, segm_results
 
     def simple_test_mask(self,
                          x,
@@ -242,3 +212,24 @@ class MaskRCNNAlign(TwoStageDetector):
                                                        ori_shape, scale_factor,
                                                        rescale)
         return segm_result
+
+    def simple_test(self, img, img_meta, proposals=None, rescale=False):
+        """Test without augmentation."""
+        assert self.with_bbox, "Bbox head must be implemented."
+
+        x = self.extract_feat(img)
+
+        proposal_list = self.simple_test_rpn(
+            x, img_meta, self.test_cfg.rpn) if proposals is None else proposals
+
+        det_bboxes, det_labels = self.simple_test_bboxes(
+            x, img_meta, proposal_list, self.test_cfg.rcnn, rescale=rescale)
+        bbox_results = bbox2result(det_bboxes, det_labels,
+                                   self.bbox_head.num_classes)
+
+        if not self.with_mask:
+            return bbox_results
+        else:
+            segm_results = self.simple_test_mask(
+                x, img_meta, det_bboxes, det_labels, rescale=rescale)
+            return bbox_results, segm_results
