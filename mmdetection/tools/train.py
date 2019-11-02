@@ -11,6 +11,9 @@ from mmdet.apis import (get_root_logger, init_dist, set_random_seed,
 from mmdet.datasets import build_dataset
 from mmdet.models import build_detector
 
+import numpy as np
+import random
+import time
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
@@ -45,9 +48,17 @@ def parse_args():
 
     return args
 
+def setup_seed(seed=0):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
 
 def main():
+    setup_seed()
     args = parse_args()
+    print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
 
     cfg = Config.fromfile(args.config)
     # set cudnn_benchmark

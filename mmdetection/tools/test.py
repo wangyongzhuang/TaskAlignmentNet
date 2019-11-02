@@ -14,6 +14,7 @@ from mmdet.apis import init_dist
 from mmdet.core import coco_eval, results2json, wrap_fp16_model
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
+import time
 
 
 def single_gpu_test(model, data_loader, show=False):
@@ -131,6 +132,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
 
     assert args.out or args.show or args.json_out, \
         ('Please specify at least one operation (save or show the results) '
