@@ -44,6 +44,7 @@ class MaskRCNNAlign(TwoStageDetector):
         """
 
     def forward_dummy(self, img):
+        print("forward dummy in mask_rcnn_align")
         raise NotImplementedError
 
     # TODO: refactor forward_train in two stage to reduce code redundancy
