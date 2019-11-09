@@ -116,8 +116,8 @@ class MaskRCNNAlign(TwoStageDetector):
                                                      self.train_cfg.rcnn)
             if pred_with_pos_inds:
                 labels = bbox_targets[0]
-                pos_inds = labels>0
-                cls_score, bbox_pred, mask_pred = self.bbox_head(bbox_feats, pos_inds=pos_inds)
+                pos_inds_wyz = labels>0
+                cls_score, bbox_pred, mask_pred = self.bbox_head(bbox_feats, pos_inds=pos_inds_wyz)
             else:
                 cls_score, bbox_pred, mask_pred = self.bbox_head(bbox_feats)
 

@@ -1,0 +1,3 @@
+python -m torch.distributed.launch --nproc_per_node=2 ./mmdetection/tools/train.py ./mmdetection/configs/cityscapes/mask_rcnn_align_r50_fpn_1x_cityscapes_local_syncbn.py --launcher pytorch
+
+python -m torch.distributed.launch --nproc_per_node=2 ./mmdetection/tools/test.py ./mmdetection/configs/cityscapes/mask_rcnn_align_r50_fpn_1x_cityscapes_local_syncbn.py work_dirs/mask_rcnn_align_r50_fpn_1x_cityscapes_local_syncbn/epoch_3.pth --launcher pytorch --out work_dirs/epoch_3_align_results.pkl --eval bbox segm

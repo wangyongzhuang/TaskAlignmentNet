@@ -493,6 +493,15 @@ class ResNet(nn.Module):
             for param in m.parameters():
                 param.requires_grad = False
 
+        # by wyz, frozen bn in backbone
+        #"""
+        for m in self.modules():
+            if isinstance(m, _BatchNorm):
+                m.eval()
+                for param in m.parameters():
+                    param.requires_grad = False
+        #"""
+
     def init_weights(self, pretrained=None):
         if isinstance(pretrained, str):
             logger = logging.getLogger()

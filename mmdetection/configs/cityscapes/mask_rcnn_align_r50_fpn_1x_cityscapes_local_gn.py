@@ -1,19 +1,23 @@
 # model settings
+norm_cfg = dict(type='GN', num_groups=32, requires_grad=True)
+
 model = dict(
     type='MaskRCNNAlign',
-    pretrained='/home/wyz/mmdet/resnet50-19c8e357.pth',#'modelzoo://resnet50',
+    pretrained='/home/wyz/mmdet/resnet50_gn-9186a21c.pth',#'/home/wyz/mmdet/resnet50-19c8e357.pth',#'modelzoo://resnet50',
     backbone=dict(
         type='ResNet',
         depth=50,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
-        style='pytorch'),
+        style='pytorch',
+        norm_cfg=norm_cfg),
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
         out_channels=256,
-        num_outs=5),
+        num_outs=5,
+        norm_cfg=norm_cfg),
     rpn_head=dict(
         type='RPNHead',
         in_channels=256,
@@ -44,6 +48,7 @@ model = dict(
         in_channels=256,
         conv_out_channels=1024,
         fc_out_channels=1024,
+        norm_cfg=norm_cfg, # by wyz
         roi_feat_size=14,#7,
         num_classes=9,#81
         target_means=[0., 0., 0., 0.],
@@ -215,7 +220,7 @@ log_config = dict(
 total_epochs = 8  # actual epoch = 8 * 8 = 64
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = '/home/wyz/mmdet/work_dirs/mask_rcnn_align_r50_fpn_1x_cityscapes_local_bn'
+work_dir = '/home/wyz/mmdet/work_dirs/mask_rcnn_align_r50_fpn_1x_cityscapes_local_gn'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

@@ -1,4 +1,7 @@
 # model settings
+norm_cfg_fbn = dict(type='BN', requires_grad=False)#? for backbone
+norm_cfg = dict(type='SyncBN', requires_grad=True)# for SyncBN
+
 model = dict(
     type='MaskRCNNAlign',
     pretrained='/home/wyz/mmdet/resnet50-19c8e357.pth',#'modelzoo://resnet50',
@@ -8,7 +11,10 @@ model = dict(
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
-        style='pytorch'),
+        style='pytorch',
+        #norm_eval=False,# for SyncBn
+        #norm_cfg=norm_cfg),# for SyncBN
+        norm_cfg=norm_cfg_fbn),
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
@@ -44,6 +50,7 @@ model = dict(
         in_channels=256,
         conv_out_channels=1024,
         fc_out_channels=1024,
+        norm_cfg=norm_cfg,# for SyncBN #by wyz
         roi_feat_size=14,#7,
         num_classes=9,#81
         target_means=[0., 0., 0., 0.],
@@ -193,7 +200,7 @@ data = dict(
         pipeline=test_pipeline))
 # optimizer
 # lr is set for a batch size of 8
-optimizer = dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)#lr=0.01
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)#lr=0.01
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -215,7 +222,7 @@ log_config = dict(
 total_epochs = 8  # actual epoch = 8 * 8 = 64
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = '/home/wyz/mmdet/work_dirs/mask_rcnn_align_r50_fpn_1x_cityscapes_local_bn'
+work_dir = '/home/wyz/mmdet/work_dirs/mask_rcnn_align_r50_fpn_1x_cityscapes_local_syncbn'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

@@ -93,8 +93,6 @@ class Bottleneck_example(nn.Module):
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
                  ):
-                 #norm_cfg=dict(type="GN", num_groups=channel/16)
-                 #dict(type="GN", num_groups=32)
 
         """Bottleneck block for ResNet.
         If style is "pytorch", the stride-two layer is the 3x3 conv layer,
@@ -108,6 +106,9 @@ class Bottleneck_example(nn.Module):
         self.dilation = dilation
         self.conv_cfg = conv_cfg
         self.norm_cfg = norm_cfg
+        self.norm_cfg_align = norm_cfg
+        if "GN" == self.norm_cfg_align["type"].upper():
+            self.norm_cfg_align["num_groups"] = 1
 
         self.conv1_stride = 1
         self.conv2_stride = stride
@@ -115,8 +116,8 @@ class Bottleneck_example(nn.Module):
         self.with_align = True #True
         self.with_align_from_bbox_to_mask = True
         self.with_align_from_mask_to_bbox = True
-        self.align_channel = 1
-        print("with_align: {} box2mask: {}, mask2box: {}, channel: {}".format(self.with_align, self.with_align_from_bbox_to_mask, self.with_align_from_mask_to_bbox, self.align_channel))
+        self.align_channel = 1 #1
+        print("with_align: {} box2mask: {}, mask2box: {}, channel: {}, norm:".format(self.with_align, self.with_align_from_bbox_to_mask, self.with_align_from_mask_to_bbox, self.align_channel), self.norm_cfg)
 
         # bbox
         self.conv1 = build_conv_layer(
@@ -126,7 +127,7 @@ class Bottleneck_example(nn.Module):
             kernel_size=1,
             stride=self.conv1_stride,
             bias=False)
-        self.norm1_name, norm1 = build_norm_layer(norm_cfg, planes, postfix=1)#
+        self.norm1_name, norm1 = build_norm_layer(self.norm_cfg, planes, postfix=1)#
         self.add_module(self.norm1_name, norm1)
         self.conv2 = build_conv_layer(
                 conv_cfg,
@@ -137,7 +138,7 @@ class Bottleneck_example(nn.Module):
                 padding=dilation,
                 dilation=dilation,
                 bias=False)
-        self.norm2_name, norm2 = build_norm_layer(norm_cfg, planes, postfix=2)
+        self.norm2_name, norm2 = build_norm_layer(self.norm_cfg, planes, postfix=2)
         self.add_module(self.norm2_name, norm2)
         self.conv3 = build_conv_layer(
             conv_cfg,
@@ -145,7 +146,7 @@ class Bottleneck_example(nn.Module):
             planes * self.expansion,
             kernel_size=1,
             bias=False)
-        self.norm3_name, norm3 = build_norm_layer(norm_cfg, planes * self.expansion, postfix=3)
+        self.norm3_name, norm3 = build_norm_layer(self.norm_cfg, planes * self.expansion, postfix=3)
         self.add_module(self.norm3_name, norm3)
 
         # mask
@@ -158,7 +159,7 @@ class Bottleneck_example(nn.Module):
                 padding=dilation,
                 dilation=dilation,
                 bias=False)
-        self.norm4_name, norm4 = build_norm_layer(norm_cfg, mask_inplanes, postfix=4)
+        self.norm4_name, norm4 = build_norm_layer(self.norm_cfg, mask_inplanes, postfix=4)
         self.add_module(self.norm4_name, norm4)
 
         if self.with_align:
@@ -168,7 +169,7 @@ class Bottleneck_example(nn.Module):
                 mask_inplanes,
                 kernel_size=1,
                 bias=False)
-            self.norm5_name, norm5 = build_norm_layer(norm_cfg, mask_inplanes, postfix=5)
+            self.norm5_name, norm5 = build_norm_layer(self.norm_cfg, mask_inplanes, postfix=5)
             self.add_module(self.norm5_name, norm5)
 
             if self.with_align_from_bbox_to_mask:
@@ -178,7 +179,7 @@ class Bottleneck_example(nn.Module):
                     self.align_channel,
                     kernel_size=1,
                     bias=False)
-                self.norm6_name, norm6 = build_norm_layer(norm_cfg, self.align_channel, postfix=6)
+                self.norm6_name, norm6 = build_norm_layer(self.norm_cfg_align, self.align_channel, postfix=6)
                 self.add_module(self.norm6_name, norm6)
 
             if self.with_align_from_mask_to_bbox:
@@ -188,7 +189,7 @@ class Bottleneck_example(nn.Module):
                     self.align_channel,
                     kernel_size=1,
                     bias=False)
-                self.norm7_name, norm7 = build_norm_layer(norm_cfg, self.align_channel, postfix=7)
+                self.norm7_name, norm7 = build_norm_layer(self.norm_cfg_align, self.align_channel, postfix=7)
                 self.add_module(self.norm7_name, norm7)
 
         self.relu = nn.ReLU(inplace=True)
@@ -283,13 +284,15 @@ class AlignBBoxHead(BBoxHead):
         self.class_agnostic = class_agnostic
         self.conv_cfg = conv_cfg
         self.norm_cfg = norm_cfg
+        #self.norm_cfg["affine"] = False
 
-        self.with_misalign_loss = False #True
+        self.with_misalign_loss = True #True
+        print("norm cfg: ", self.norm_cfg)
         print("with misalign loss: ", self.with_misalign_loss)
 
         # 1.0 roi_feat
         # increase the channel of input features
-        self.res_block = BasicResBlock(self.in_channels, self.conv_out_channels)
+        self.res_block = BasicResBlock(self.in_channels, self.conv_out_channels, norm_cfg=self.norm_cfg)
 
         self.roi_feat_size = _pair(roi_feat_size)
         # add conv heads
@@ -350,7 +353,7 @@ class AlignBBoxHead(BBoxHead):
         last_channel = self.conv_out_channels
         for i in range(self.num_convs):
             branch_convs.append(
-                Bottleneck_example()
+                Bottleneck_example(norm_cfg=self.norm_cfg)
             )
             last_channel = self.conv_out_channels
         return branch_convs
@@ -501,6 +504,8 @@ class AlignBBoxHead(BBoxHead):
             losses['acc'] = accuracy(cls_score, labels)
         if bbox_pred is not None:
             pos_inds = labels > 0
+            #import pdb
+            #pdb.set_trace()
             if pred_with_pos_inds:
                 pos_inds_for_reg = pos_inds[pos_inds]
             else:

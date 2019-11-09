@@ -144,8 +144,6 @@ class DoubleHeadRCNN(TwoStageDetector):
             loss_mask = self.mask_head.loss(mask_pred, mask_targets,
                                             pos_labels)
             losses.update(loss_mask)
-        import pdb
-        pdb.set_trace()
 
         return losses
 
